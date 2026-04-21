@@ -3,32 +3,56 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
+const BACKEND = process.env.HERMES_DASHBOARD_URL ?? "http://127.0.0.1:9119";
+
 /**
- * In production, hermes_cli.web_server injects the session token into
- * index.html as it serves the SPA. In dev we're served by Vite directly,
- * so the token never gets there. This plugin reads HERMES_DASHBOARD_DEV_TOKEN
- * and injects the same shape, matching the production bootstrap so the
- * gateway client and api.ts don't need a dev-mode branch.
+ * In production the Python `hermes dashboard` server injects a one-shot
+ * session token into `index.html` (see `hermes_cli/web_server.py`). The
+ * Vite dev server serves its own `index.html`, so unless we forward that
+ * token, every protected `/api/*` call 401s.
+ *
+ * This plugin fetches the running dashboard's `index.html` on each dev page
+ * load, scrapes the `window.__HERMES_SESSION_TOKEN__` assignment, and
+ * re-injects it into the dev HTML. No-op in production builds.
  */
-function injectDevToken(): Plugin {
+function hermesDevToken(): Plugin {
+  const TOKEN_RE = /window\.__HERMES_SESSION_TOKEN__\s*=\s*"([^"]+)"/;
+
   return {
-    name: "hermes-dashboard-dev-token",
-    transformIndexHtml() {
-      const token = process.env.HERMES_DASHBOARD_DEV_TOKEN;
-      if (!token) return;
-      return [
-        {
-          tag: "script",
-          injectTo: "head",
-          children: `window.__HERMES_SESSION_TOKEN__=${JSON.stringify(token)};`,
-        },
-      ];
+    name: "hermes:dev-session-token",
+    apply: "serve",
+    async transformIndexHtml() {
+      try {
+        const res = await fetch(BACKEND, { headers: { accept: "text/html" } });
+        const html = await res.text();
+        const match = html.match(TOKEN_RE);
+        if (!match) {
+          console.warn(
+            `[hermes] Could not find session token in ${BACKEND} — ` +
+              `is \`hermes dashboard\` running? /api calls will 401.`,
+          );
+          return;
+        }
+        return [
+          {
+            tag: "script",
+            injectTo: "head",
+            children: `window.__HERMES_SESSION_TOKEN__="${match[1]}";`,
+          },
+        ];
+      } catch (err) {
+        console.warn(
+          `[hermes] Dashboard at ${BACKEND} unreachable — ` +
+            `start it with \`hermes dashboard\` or set HERMES_DASHBOARD_URL. ` +
+            `(${(err as Error).message})`,
+        );
+      }
     },
   };
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), injectDevToken()],
+  plugins: [react(), tailwindcss(), hermesDevToken()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -40,11 +64,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // REST endpoints + the /api/ws WebSocket (ws: true enables upgrade forwarding).
-      "/api": {
-        target: "http://127.0.0.1:9119",
-        ws: true,
-      },
+      // REST + the /api/ws WebSocket (ws: true enables upgrade forwarding).
+      "/api": { target: BACKEND, ws: true },
     },
   },
 });

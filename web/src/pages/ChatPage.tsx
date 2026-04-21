@@ -157,7 +157,11 @@ export default function ChatPage() {
     setConnectError("");
     setRuntimeError("");
 
-    const gw = gwRef.current ?? new GatewayClient();
+    // Always tear down the previous client — reusing it would re-register
+    // onState + on(...) handlers on every bootstrap call (e.g. the "Reset
+    // session" button), duplicating deltas and tool events.
+    gwRef.current?.close();
+    const gw = new GatewayClient();
     gwRef.current = gw;
 
     gw.onState(setConnState);
