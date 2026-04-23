@@ -19,5 +19,10 @@
     basic_auth {
         {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
     }
-    reverse_proxy 127.0.0.1:9119
+    reverse_proxy 127.0.0.1:9119 {
+        # Dashboard enforces DNS-rebinding protection — it only trusts loopback
+        # Host headers when bound to 127.0.0.1. Rewrite Host to the upstream
+        # hostport so the check passes.
+        header_up Host {upstream_hostport}
+    }
 }
