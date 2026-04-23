@@ -1,0 +1,23 @@
+# Caddy reverse proxy in front of the Hermes dashboard.
+# Adds HTTP basic auth so the dashboard can be safely exposed on a public URL.
+#
+# Env vars read at startup:
+#   PORT                    — Railway-assigned public port (Caddy listens here)
+#   DASHBOARD_USER          — basic auth username
+#   DASHBOARD_PASSWORD_HASH — bcrypt hash (generate with: caddy hash-password)
+#
+# Caddy listens plain-HTTP; Railway terminates TLS at its edge and forwards
+# over its private network, so the basic-auth creds still travel over HTTPS
+# from the user's browser.
+
+{
+    auto_https off
+    admin off
+}
+
+:{$PORT:8080} {
+    basic_auth {
+        {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+    }
+    reverse_proxy 127.0.0.1:9119
+}

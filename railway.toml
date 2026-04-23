@@ -1,0 +1,8 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.railway"
+
+[deploy]
+# Launcher runs gateway + dashboard + Caddy (basic-auth proxy) in one container.
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
