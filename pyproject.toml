@@ -161,3 +161,7 @@ exclude = ["*"]
 
 [tool.uv]
 exclude-newer = "7 days"
+# composio-core pins rich<14 conservatively; hermes pins rich>=14.3.3. The
+# APIs composio uses (Console, Progress) are backward-compatible across the
+# 13→14 bump, so force rich 14 everywhere instead of forking the dep tree.
+override-dependencies = ["rich>=14.3.3,<15"]
