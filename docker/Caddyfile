@@ -16,13 +16,26 @@
 }
 
 :{$PORT:8080} {
-    basic_auth {
-        {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+    # The dashboard enforces its own Bearer-token auth on /api/* (the token
+    # is injected into index.html and sent by the frontend JS). Requests
+    # carrying a Bearer token skip Caddy's Basic-auth gate to avoid the
+    # "two competing Authorization schemes" browser loop; the dashboard
+    # validates those itself.
+    @hasBearer header Authorization "Bearer *"
+    handle @hasBearer {
+        reverse_proxy 127.0.0.1:9119 {
+            header_up Host {upstream_hostport}
+        }
     }
-    reverse_proxy 127.0.0.1:9119 {
-        # Dashboard enforces DNS-rebinding protection — it only trusts loopback
-        # Host headers when bound to 127.0.0.1. Rewrite Host to the upstream
-        # hostport so the check passes.
-        header_up Host {upstream_hostport}
+
+    # Everything else (HTML, static assets, unauthenticated API probes)
+    # requires Basic auth. This is what gates the initial dashboard load.
+    handle {
+        basic_auth {
+            {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+        }
+        reverse_proxy 127.0.0.1:9119 {
+            header_up Host {upstream_hostport}
+        }
     }
 }
