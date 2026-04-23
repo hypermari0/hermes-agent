@@ -35,6 +35,12 @@ if [ -d "$INSTALL_DIR/skills" ]; then
     python3 "$INSTALL_DIR/tools/skills_sync.py" || true
 fi
 
+# Auto-enable the composio plugin when an API key is present.
+# Idempotent — `hermes plugins enable` is a no-op if already enabled.
+if [ -n "$COMPOSIO_API_KEY" ]; then
+    hermes plugins enable composio || true
+fi
+
 # --- Config sanity ---
 if [ -z "$DASHBOARD_USER" ] || [ -z "$DASHBOARD_PASSWORD_HASH" ]; then
     echo "ERROR: DASHBOARD_USER and DASHBOARD_PASSWORD_HASH must be set."
