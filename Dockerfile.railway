@@ -39,6 +39,6 @@ RUN uv venv && \
 ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
 ENV HERMES_HOME=/opt/data
 ENV PATH="/opt/data/.local/bin:${PATH}"
-VOLUME [ "/opt/data" ]
+# No VOLUME directive: Railway manages the /opt/data volume via `railway volume add`.
 
 ENTRYPOINT [ "/opt/hermes/docker/railway-launcher.sh" ]
