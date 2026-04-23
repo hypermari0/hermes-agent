@@ -36,6 +36,11 @@ USER hermes
 RUN uv venv && \
     uv pip install --no-cache-dir -e ".[all]"
 
+# Back to root so the entrypoint can chown Railway's root-owned volume at
+# /opt/data, then gosu-drop to the hermes user. (Railway mounts volumes as
+# root; without this, mkdir under /opt/data fails.)
+USER root
+
 ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
 ENV HERMES_HOME=/opt/data
 ENV PATH="/opt/data/.local/bin:${PATH}"
