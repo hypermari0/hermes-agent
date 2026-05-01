@@ -15,6 +15,14 @@
 
 Use any model you want — [Nous Portal](https://portal.nousresearch.com), [OpenRouter](https://openrouter.ai) (200+ models), [NVIDIA NIM](https://build.nvidia.com) (Nemotron), [Xiaomi MiMo](https://platform.xiaomimimo.com), [z.ai/GLM](https://z.ai), [Kimi/Moonshot](https://platform.moonshot.ai), [MiniMax](https://www.minimax.io), [Hugging Face](https://huggingface.co), OpenAI, or your own endpoint. Switch with `hermes model` — no code changes, no lock-in.
 
+> **What this fork adds** on top of upstream [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent):
+>
+> - **One-click Railway deploy** — single-container image (gateway + dashboard + Caddy with HTTP Basic auth) + a persistent volume for sessions, skills, and memory. Click the Deploy button below; no infra setup required.
+> - **[Composio](https://composio.dev) plugin** — Gmail, Google Calendar, Google Drive, Slack, GitHub, Notion, Linear, and 250+ other apps registered as agent tools. Per-session entity isolation so a multi-user gateway doesn't cross-contaminate connected accounts. Set `COMPOSIO_API_KEY` and the plugin auto-enables on boot.
+> - **Public dashboard with Basic auth** — the existing Hermes dashboard, exposed on a Railway URL behind a Caddy basic-auth gate. Manage your agent (configure providers, install skills, browse sessions) from any browser.
+>
+> Everything else below is upstream Hermes — same install commands, same docs, same architecture.
+
 <table>
 <tr><td><b>A real terminal interface</b></td><td>Full TUI with multiline editing, slash-command autocomplete, conversation history, interrupt-and-redirect, and streaming tool output.</td></tr>
 <tr><td><b>Lives where you do</b></td><td>Telegram, Discord, Slack, WhatsApp, Signal, and CLI — all from a single gateway process. Voice memo transcription, cross-platform conversation continuity.</td></tr>
