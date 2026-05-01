@@ -115,7 +115,7 @@ dashboard, and a Caddy reverse-proxy with HTTP Basic auth. After deploy you
 get a public URL where you can manage Hermes (configure providers, install
 skills, view sessions) from any browser.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fhypermari0%2Fhermes-agent)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/c-uq1y?referralCode=Le2VXH)
 
 ### What gets deployed
 
