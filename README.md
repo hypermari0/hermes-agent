@@ -108,6 +108,52 @@ All documentation lives at **[hermes-agent.nousresearch.com/docs](https://hermes
 
 ---
 
+## Deploy on Railway
+
+Hermes ships with a single-container Railway image that runs the gateway,
+dashboard, and a Caddy reverse-proxy with HTTP Basic auth. After deploy you
+get a public URL where you can manage Hermes (configure providers, install
+skills, view sessions) from any browser.
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Fhypermari0%2Fhermes-agent)
+
+### What gets deployed
+
+- **One service** built from `Dockerfile.railway` (Caddy + gateway + dashboard).
+- **One volume** mounted at `/opt/data` for sessions, memories, skills, cron
+  jobs, and the agent's workspace.
+
+### Required environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `DASHBOARD_USER` | Basic-auth username for the public dashboard URL. |
+| `DASHBOARD_PASSWORD_HASH` | Bcrypt hash of the password. Generate with `docker run --rm caddy:2 caddy hash-password`. |
+| `OPENROUTER_API_KEY` *(or another provider)* | LLM provider key — see `.env.example` for the full list (Gemini, Anthropic, Kimi, MiniMax, etc.). |
+
+### Recommended environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `COMPOSIO_API_KEY` | Auto-enables the [Composio](https://composio.dev) plugin on boot — exposes Gmail, Calendar, Linear, Slack, GitHub, and 250+ other apps as agent tools. |
+| `TELEGRAM_BOT_TOKEN` | Talk to Hermes from Telegram in addition to the web dashboard. |
+
+The full set of supported variables (every LLM provider, every messaging
+platform, every tool credential) is documented in `.env.example`.
+
+### After deployment
+
+1. Visit the Railway-assigned URL and log in with `DASHBOARD_USER` /
+   the password you hashed.
+2. Run `hermes setup` from the Railway shell (or the dashboard's terminal)
+   if you want the interactive provider/model picker.
+3. Add a custom domain in Railway → Settings → Domains.
+
+The `/opt/data` volume persists across redeploys, so your sessions, skills,
+and memories survive image updates.
+
+---
+
 ## Migrating from OpenClaw
 
 If you're coming from OpenClaw, Hermes can automatically import your settings, memories, skills, and API keys.

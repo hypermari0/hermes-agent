@@ -1,7 +1,6 @@
 """Composio integration for Hermes.
 
-Ported from eva's ``composio_bridge.py`` (https://github.com/hypermari0/eva).
-Differences vs. eva:
+Bridges Composio actions into the Hermes tool registry:
 
 * Tool handlers return JSON strings via ``tool_result`` / ``tool_error`` to
   match the hermes registry contract.

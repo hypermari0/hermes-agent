@@ -16,20 +16,21 @@
 }
 
 :{$PORT:8080} {
-    # The dashboard enforces its own Bearer-token auth on /api/* (the token
-    # is injected into index.html and sent by the frontend JS). Requests
-    # carrying a Bearer token skip Caddy's Basic-auth gate to avoid the
-    # "two competing Authorization schemes" browser loop; the dashboard
-    # validates those itself.
-    @hasBearer header Authorization "Bearer *"
-    handle @hasBearer {
+    # API and websocket calls carry a Bearer token that the dashboard
+    # validates itself. Skipping Basic-auth on these paths avoids the
+    # "two competing Authorization schemes" loop in the browser. Everything
+    # else (HTML shell, static assets, plugin assets) stays behind Basic-auth
+    # so the public URL can't be probed without credentials.
+    @apiBearer {
+        header Authorization "Bearer *"
+        path /api/* /ws /ws/*
+    }
+    handle @apiBearer {
         reverse_proxy 127.0.0.1:9119 {
             header_up Host {upstream_hostport}
         }
     }
 
-    # Everything else (HTML, static assets, unauthenticated API probes)
-    # requires Basic auth. This is what gates the initial dashboard load.
     handle {
         basic_auth {
             {$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}

@@ -69,3 +69,7 @@ mini-swe-agent/
 .nix-stamps/
 result
 website/static/api/skills-index.json
+
+# Local Claude Code settings and personal scratch plans
+.claude/settings.local.json
+.plans/
