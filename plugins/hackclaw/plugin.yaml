@@ -1,0 +1,21 @@
+# HackClaw Hermes plugin manifest.
+#
+# Hermes loads this plugin from ~/.hermes/plugins/hackclaw/. The plugin's
+# __init__.py defines a register(ctx) entry point that wires schemas to
+# handlers via ctx.register_tool().
+#
+# Manifest keys mirror upstream Hermes plugin conventions (see
+# plugins/spotify/plugin.yaml in NousResearch/hermes-agent for reference).
+
+name: hackclaw
+version: 0.2.0
+description: "AI squads that claw their way to hackathon wins. Six skills (Strategist, PM, Dev, Designer, Storyteller, Submitter), a pluggable hackathon-platform protocol, TAIKAI native via MCP."
+author: Mario Alves
+kind: backend
+provides_tools:
+  - hackclaw_select_platform
+  - hackclaw_get_brief
+  - hackclaw_list_submissions
+  - hackclaw_create_draft
+  - hackclaw_update_project
+  - hackclaw_submit
