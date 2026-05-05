@@ -37,9 +37,11 @@ RUN uv venv && \
     uv pip install --no-cache-dir -e ".[all]"
 
 # HackClaw plugin (https://github.com/hypermari0/hackclaw): clone into the
-# image and install into the venv. Skill + plugin dirs are symlinked into the
+# image, apply the in-tree TAIKAI MCP-dispatch patch (until upstream merges),
+# then install into the venv. Skill + plugin dirs are symlinked into the
 # Railway volume at runtime by docker/railway-launcher.sh.
 RUN git clone --depth 1 https://github.com/hypermari0/hackclaw.git /opt/hermes/hackclaw && \
+    git -C /opt/hermes/hackclaw apply /opt/hermes/docker/hackclaw-taikai-mcp.patch && \
     uv pip install --no-cache-dir -e /opt/hermes/hackclaw
 
 # Back to root so the entrypoint can chown Railway's root-owned volume at
