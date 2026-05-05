@@ -90,6 +90,37 @@ class OAuthNonInteractiveError(RuntimeError):
 _oauth_port: int | None = None
 
 
+# Out-of-band auth-URL broadcasters. Hosts (e.g. the messaging gateway)
+# register a callable here at startup; when an OAuth flow needs user
+# interaction, every registered handler is invoked with
+# ``(server_name, authorization_url)``. Handlers should be non-blocking and
+# must not raise — exceptions are logged and swallowed so a buggy handler
+# can't break the OAuth flow. The stderr/browser fallback in
+# ``_redirect_handler`` always runs regardless of registered handlers.
+_AUTH_URL_BROADCASTERS: list[Any] = []
+
+
+def register_auth_url_broadcaster(fn: Any) -> None:
+    """Register a sync handler invoked on each OAuth authorization redirect.
+
+    Signature: ``fn(server_name: str, authorization_url: str) -> None``.
+
+    Use cases: forwarding the URL through the messaging gateway (Telegram,
+    Slack, etc.) so a remote/headless Hermes instance can complete OAuth
+    without a local browser.
+    """
+    if fn not in _AUTH_URL_BROADCASTERS:
+        _AUTH_URL_BROADCASTERS.append(fn)
+
+
+def unregister_auth_url_broadcaster(fn: Any) -> None:
+    """Reverse of :func:`register_auth_url_broadcaster`. Idempotent."""
+    try:
+        _AUTH_URL_BROADCASTERS.remove(fn)
+    except ValueError:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -333,30 +364,55 @@ def _make_callback_handler() -> tuple[type, dict]:
 # ---------------------------------------------------------------------------
 
 
-async def _redirect_handler(authorization_url: str) -> None:
-    """Show the authorization URL to the user.
+def _make_redirect_handler(server_name: str):
+    """Build an async redirect handler bound to ``server_name``.
 
-    Opens the browser automatically when possible; always prints the URL
-    as a fallback for headless/SSH/gateway environments.
+    The MCP SDK's ``OAuthClientProvider`` calls the handler with just the
+    ``authorization_url``; binding ``server_name`` here lets registered
+    broadcasters (e.g. the messaging gateway) attribute the URL to the
+    right server.
     """
-    msg = (
-        f"\n  MCP OAuth: authorization required.\n"
-        f"  Open this URL in your browser:\n\n"
-        f"    {authorization_url}\n"
-    )
-    print(msg, file=sys.stderr)
+    async def _handler(authorization_url: str) -> None:
+        msg = (
+            f"\n  MCP OAuth: authorization required for '{server_name}'.\n"
+            f"  Open this URL in your browser:\n\n"
+            f"    {authorization_url}\n"
+        )
+        print(msg, file=sys.stderr)
 
-    if _can_open_browser():
-        try:
-            opened = webbrowser.open(authorization_url)
-            if opened:
-                print("  (Browser opened automatically.)\n", file=sys.stderr)
-            else:
+        for broadcaster in list(_AUTH_URL_BROADCASTERS):
+            try:
+                broadcaster(server_name, authorization_url)
+            except Exception:
+                logger.exception(
+                    "OAuth auth-URL broadcaster %r failed for '%s'",
+                    broadcaster,
+                    server_name,
+                )
+
+        if _can_open_browser():
+            try:
+                opened = webbrowser.open(authorization_url)
+                if opened:
+                    print("  (Browser opened automatically.)\n", file=sys.stderr)
+                else:
+                    print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
+            except Exception:
                 print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
-        except Exception:
-            print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
-    else:
-        print("  (Headless environment detected — open the URL manually.)\n", file=sys.stderr)
+        else:
+            print("  (Headless environment detected — open the URL manually.)\n", file=sys.stderr)
+
+    return _handler
+
+
+async def _redirect_handler(authorization_url: str) -> None:
+    """Backwards-compatible top-level handler (no server_name binding).
+
+    Kept so existing callers/tests that import ``_redirect_handler`` directly
+    continue to work; new code should use :func:`_make_redirect_handler`.
+    """
+    handler = _make_redirect_handler("(unknown)")
+    await handler(authorization_url)
 
 
 async def _wait_for_callback() -> tuple[str, str | None]:
@@ -448,6 +504,12 @@ def _configure_callback_port(cfg: dict) -> int:
     helpers (and the manager) can read it from the same dict. Returns the
     resolved port.
 
+    When ``cfg['public_callback_url']`` is set, the redirect_uri is built
+    from that URL (so OAuth callbacks reach a public endpoint reverse-
+    proxied back to ``127.0.0.1:<redirect_port>/callback``). In that case
+    ``redirect_port`` MUST be set to a fixed value so the upstream proxy
+    has a stable target.
+
     NOTE: also sets the legacy module-level ``_oauth_port`` so existing
     calls to ``_wait_for_callback`` keep working. The legacy global is
     the root cause of issue #5344 (port collision on concurrent OAuth
@@ -456,10 +518,31 @@ def _configure_callback_port(cfg: dict) -> int:
     """
     global _oauth_port
     requested = int(cfg.get("redirect_port", 0))
+    if cfg.get("public_callback_url") and requested == 0:
+        raise ValueError(
+            "MCP OAuth: oauth.public_callback_url is set but oauth.redirect_port "
+            "is unset (or 0). The reverse proxy needs a stable upstream port — "
+            "pin redirect_port (e.g. 9123) and forward the public path there."
+        )
     port = _find_free_port() if requested == 0 else requested
     cfg["_resolved_port"] = port
     _oauth_port = port  # legacy consumer: _wait_for_callback reads this
     return port
+
+
+def _resolve_redirect_uri(cfg: dict) -> str:
+    """Return the redirect_uri to send during OAuth client registration.
+
+    Prefers ``cfg['public_callback_url']`` when present (used when an
+    external reverse proxy fronts the callback server, e.g. Caddy on
+    Railway forwarding ``/oauth/callback`` to the local listener).
+    Otherwise builds the loopback URI from the resolved port.
+    """
+    public = cfg.get("public_callback_url")
+    if public:
+        return str(public).rstrip("/")
+    port = cfg["_resolved_port"]
+    return f"http://127.0.0.1:{port}/callback"
 
 
 def _build_client_metadata(cfg: dict) -> "OAuthClientMetadata":
@@ -475,7 +558,7 @@ def _build_client_metadata(cfg: dict) -> "OAuthClientMetadata":
         )
     client_name = cfg.get("client_name", "Hermes Agent")
     scope = cfg.get("scope")
-    redirect_uri = f"http://127.0.0.1:{port}/callback"
+    redirect_uri = _resolve_redirect_uri(cfg)
 
     metadata_kwargs: dict[str, Any] = {
         "client_name": client_name,
@@ -502,7 +585,7 @@ def _maybe_preregister_client(
     if not client_id:
         return
     port = cfg["_resolved_port"]
-    redirect_uri = f"http://127.0.0.1:{port}/callback"
+    redirect_uri = _resolve_redirect_uri(cfg)
 
     info_dict: dict[str, Any] = {
         "client_id": client_id,
@@ -571,7 +654,7 @@ def build_oauth_auth(
         server_url=server_url,
         client_metadata=client_metadata,
         storage=storage,
-        redirect_handler=_redirect_handler,
+        redirect_handler=_make_redirect_handler(server_name),
         callback_handler=_wait_for_callback,
         timeout=float(cfg.get("timeout", 300)),
     )

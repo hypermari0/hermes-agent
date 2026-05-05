@@ -26,6 +26,21 @@
         }
     }
 
+    # /oauth/* forwards to the MCP OAuth callback server bound on the
+    # pinned port from mcp_servers.<name>.oauth.redirect_port. Default 9123
+    # (overridable via MCP_OAUTH_CALLBACK_PORT). Unauthenticated so external
+    # OAuth providers can deliver the redirect; the request carries an
+    # unguessable one-time `state` token that the server validates.
+    @oauthCallback path /oauth/*
+    handle @oauthCallback {
+        # Strip /oauth prefix so /oauth/callback → /callback (the path the
+        # local listener serves). Query string (code, state) is preserved.
+        uri strip_prefix /oauth
+        reverse_proxy 127.0.0.1:{$MCP_OAUTH_CALLBACK_PORT:9123} {
+            header_up Host {upstream_hostport}
+        }
+    }
+
     # API and websocket calls carry a Bearer token that the dashboard
     # validates itself. Skipping Basic-auth on these paths avoids the
     # "two competing Authorization schemes" loop in the browser. Everything

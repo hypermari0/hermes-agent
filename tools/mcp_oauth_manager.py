@@ -361,8 +361,8 @@ class MCPOAuthManager:
             _build_client_metadata,
             _configure_callback_port,
             _is_interactive,
+            _make_redirect_handler,
             _maybe_preregister_client,
-            _redirect_handler,
             _wait_for_callback,
         )
 
@@ -389,7 +389,7 @@ class MCPOAuthManager:
             server_url=entry.server_url,
             client_metadata=client_metadata,
             storage=storage,
-            redirect_handler=_redirect_handler,
+            redirect_handler=_make_redirect_handler(server_name),
             callback_handler=_wait_for_callback,
             timeout=float(cfg.get("timeout", 300)),
         )

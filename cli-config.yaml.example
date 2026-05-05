@@ -770,6 +770,22 @@ platform_toolsets:
 #       allowed_models: []      # model whitelist (empty = all)
 #       max_tool_rounds: 5      # tool loop limit (0 = disable)
 #       log_level: "info"       # audit verbosity
+#
+# OAuth-protected MCP servers (auth: oauth):
+# By default Hermes runs the OAuth callback on a random loopback port and
+# opens the browser for you. For a remote/headless deployment (e.g. Hermes
+# on Railway, accessed via Telegram), pin the callback port and tell the
+# OAuth provider to redirect to a public URL that your reverse proxy
+# forwards back to that port. The Railway Caddyfile already routes
+# `/oauth/*` to 127.0.0.1:${MCP_OAUTH_CALLBACK_PORT:-9123}, so a typical
+# config looks like:
+#   taikai:
+#     url: https://mcp.taikai.network/mcp
+#     auth: oauth
+#     oauth:
+#       redirect_port: 9123                                              # required when public_callback_url is set
+#       public_callback_url: https://hermes.example.railway.app/oauth/callback
+#       # client_id, client_secret, scope, client_name — optional, as before
 
 # =============================================================================
 # Voice Transcription (Speech-to-Text)
