@@ -71,53 +71,59 @@ class TaikaiPlatform(HackathonPlatform):
     async def _mcp_call(self, tool_name: str, args: dict) -> dict:
         """Dispatch a call to the TAIKAI MCP via Hermes.
 
-        Hermes versions have shipped a few different shapes for in-process
-        MCP dispatch. We probe them in order, then surface a clear error
-        with the recommended fallback if none are present.
-
-        Known shapes (probed in order):
-        1. `hermes.mcp.call_mcp(server, tool, args)` (async)
-        2. `hermes.tools.mcp_dispatch.call(server, tool, args)` (async)
-        3. `hermes.runtime.get_mcp("taikai").call(tool, args)` (async)
-
-        If none resolve, raise with a useful message pointing at the
-        graphql fallback.
+        Hermes keeps a global registry of connected MCP servers in
+        ``tools.mcp_tool._servers``, each with an MCP session whose
+        ``call_tool`` runs on a dedicated background event loop
+        (``tools.mcp_tool._mcp_loop``). We look up the "taikai" server,
+        schedule the call cross-thread, and parse the response.
         """
-        last_err: Exception | None = None
+        import asyncio
+        import json as _json
 
-        # Path 1: hermes.mcp.call_mcp
-        try:
-            from hermes.mcp import call_mcp  # type: ignore
-        except Exception as e:
-            last_err = e
-        else:
-            return await call_mcp("taikai", tool_name, args)
+        from tools import mcp_tool as _mcp
 
-        # Path 2: hermes.tools.mcp_dispatch.call
-        try:
-            from hermes.tools.mcp_dispatch import call as mcp_call  # type: ignore
-        except Exception as e:
-            last_err = e
-        else:
-            return await mcp_call("taikai", tool_name, args)
+        with _mcp._lock:
+            server = _mcp._servers.get("taikai")
+            loop = _mcp._mcp_loop
 
-        # Path 3: hermes.runtime.get_mcp
-        try:
-            from hermes.runtime import get_mcp  # type: ignore
-        except Exception as e:
-            last_err = e
-        else:
-            client = get_mcp("taikai")
-            return await client.call(tool_name, args)
+        if not server or not server.session:
+            raise RuntimeError(
+                "MCP server 'taikai' is not connected. Run "
+                "`hermes mcp add taikai --url https://mcp.taikai.network/mcp "
+                "--auth oauth` and retry, or set HACKCLAW_TAIKAI_VIA=graphql "
+                "with TAIKAI_TOKEN to use the GraphQL fallback."
+            )
+        if loop is None or not loop.is_running():
+            raise RuntimeError("Hermes MCP event loop is not running")
 
-        raise RuntimeError(
-            "TAIKAI MCP route is unreachable from this Hermes install. "
-            "None of the known Hermes MCP-dispatch entry points resolved. "
-            "Set HACKCLAW_TAIKAI_VIA=graphql with TAIKAI_TOKEN to use the "
-            "GraphQL fallback. "
-            f"(Wanted: taikai.{tool_name} with keys {list(args.keys())}). "
-            f"Last import error: {last_err!r}"
+        async def _do_call():
+            async with server._rpc_lock:
+                return await server.session.call_tool(tool_name, arguments=args)
+
+        fut = asyncio.run_coroutine_threadsafe(_do_call(), loop)
+        result = await asyncio.wrap_future(fut)
+
+        if result.isError:
+            err_text = "".join(
+                getattr(b, "text", "") for b in (result.content or [])
+            )
+            raise RuntimeError(
+                f"TAIKAI MCP error from {tool_name}: {err_text or 'unknown'}"
+            )
+
+        structured = getattr(result, "structuredContent", None)
+        if isinstance(structured, dict):
+            return structured
+
+        text = "\n".join(
+            b.text for b in (result.content or []) if hasattr(b, "text")
         )
+        if not text:
+            return {}
+        try:
+            return _json.loads(text)
+        except _json.JSONDecodeError:
+            return {"_raw": text}
 
     # ---------- GraphQL route ----------
 
