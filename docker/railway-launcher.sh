@@ -54,6 +54,43 @@ if [ -n "$COMPOSIO_API_KEY" ]; then
     hermes plugins enable composio || true
 fi
 
+# HackClaw / TAIKAI MCP: idempotently inject the taikai entry into
+# config.yaml when the public domain is known. Lets a fresh deploy go from
+# zero to functional OAuth without manually editing the volume — see
+# tools/mcp_oauth.py (public_callback_url support) and docker/Caddyfile
+# (`/oauth/*` route to MCP_OAUTH_CALLBACK_PORT). Only adds; never overwrites
+# an existing taikai entry.
+RAILWAY_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-}"
+if [ -n "$RAILWAY_DOMAIN" ] && [ -f "$HERMES_HOME/config.yaml" ]; then
+    python3 - "$HERMES_HOME/config.yaml" "$RAILWAY_DOMAIN" <<'PY' || true
+import sys
+import yaml
+
+cfg_path, domain = sys.argv[1], sys.argv[2]
+with open(cfg_path) as f:
+    cfg = yaml.safe_load(f) or {}
+
+mcp = cfg.get("mcp_servers")
+if not isinstance(mcp, dict):
+    mcp = {}
+    cfg["mcp_servers"] = mcp
+
+if "taikai" not in mcp:
+    mcp["taikai"] = {
+        "url": "https://mcp.taikai.network/mcp",
+        "auth": "oauth",
+        "oauth": {
+            "redirect_port": 9123,
+            "public_callback_url": f"https://{domain}/oauth/callback",
+        },
+    }
+    with open(cfg_path, "w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    print(f"[launcher] injected taikai mcp_server entry "
+          f"(public_callback_url=https://{domain}/oauth/callback)")
+PY
+fi
+
 # --- Config sanity ---
 if [ -z "$DASHBOARD_USER" ] || [ -z "$DASHBOARD_PASSWORD_HASH" ]; then
     echo "ERROR: DASHBOARD_USER and DASHBOARD_PASSWORD_HASH must be set."
