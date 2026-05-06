@@ -31,6 +31,7 @@ import {
   Menu,
   MessageSquare,
   Package,
+  Plug,
   Puzzle,
   RotateCw,
   Settings,
@@ -67,6 +68,7 @@ import ProfilesPage from "@/pages/ProfilesPage";
 import SkillsPage from "@/pages/SkillsPage";
 import PluginsPage from "@/pages/PluginsPage";
 import ChatPage from "@/pages/ChatPage";
+import McpPage from "@/pages/McpPage";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { useI18n } from "@/i18n";
@@ -113,6 +115,7 @@ const BUILTIN_ROUTES_CORE: Record<string, ComponentType> = {
   "/cron": CronPage,
   "/skills": SkillsPage,
   "/plugins": PluginsPage,
+  "/mcp": McpPage,
   "/profiles": ProfilesPage,
   "/config": ConfigPage,
   "/env": EnvPage,
@@ -150,6 +153,7 @@ const BUILTIN_NAV_REST: NavItem[] = [
   { path: "/cron", labelKey: "cron", label: "Cron", icon: Clock },
   { path: "/skills", labelKey: "skills", label: "Skills", icon: Package },
   { path: "/plugins", labelKey: "plugins", label: "Plugins", icon: Puzzle },
+  { path: "/mcp", labelKey: "mcp", label: "MCP", icon: Plug },
   { path: "/profiles", labelKey: "profiles", label: "Profiles", icon: Users },
   { path: "/config", labelKey: "config", label: "Config", icon: Settings },
   { path: "/env", labelKey: "keys", label: "Keys", icon: KeyRound },

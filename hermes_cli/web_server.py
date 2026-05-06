@@ -2214,6 +2214,198 @@ async def delete_session_endpoint(session_id: str):
 
 
 # ---------------------------------------------------------------------------
+# MCP server OAuth — dashboard-driven flow for headless deploys
+#
+# The CLI path (`hermes mcp test <name>`) only works when an operator has a
+# TTY into the host. On Railway the gateway boots non-interactively, hits
+# OAuth, finds no cached tokens, and skips the server. These endpoints
+# expose the same probe via HTTP so a logged-in dashboard user can drive
+# OAuth from their browser:
+#
+#   1. POST /api/mcp/oauth/start/{name}  → spawns a worker thread that
+#      runs the probe. The MCP SDK's OAuth flow fires _make_redirect_handler,
+#      which broadcasts the auth URL through register_auth_url_broadcaster.
+#      Our broadcaster captures the URL into _mcp_oauth_flows[name].
+#   2. GET /api/mcp/oauth/status/{name}  → poll for {status, url, error}.
+#      UI surfaces the URL as a clickable link when status == "url_ready".
+#   3. User clicks the URL, authorizes on the provider's site, browser is
+#      redirected to <public-url>/oauth/callback?code=…&state=…. Caddy
+#      strips the /oauth prefix and proxies to 127.0.0.1:9123 (the listener
+#      bound by the worker thread inside this process).
+#   4. Worker thread captures the code, the SDK exchanges for tokens, tokens
+#      land in HERMES_HOME/mcp-tokens/<name>.json. Probe returns; we mark
+#      status "completed". User then restarts the gateway so it picks up
+#      the cached credentials at boot.
+# ---------------------------------------------------------------------------
+
+
+_mcp_oauth_flows_lock = threading.Lock()
+_mcp_oauth_flows: Dict[str, Dict[str, Any]] = {}
+_mcp_oauth_broadcaster_registered = False
+
+
+def _record_mcp_auth_url(server_name: str, authorization_url: str) -> None:
+    """Broadcaster: capture the auth URL so the dashboard can surface it.
+
+    Runs in whatever thread the MCP SDK invokes the redirect handler from
+    (typically the dedicated MCP loop thread), so the lock is required.
+    Silently ignores servers without an active dashboard-initiated flow —
+    a gateway-side flow registered the same broadcaster shouldn't pollute
+    dashboard state.
+    """
+    with _mcp_oauth_flows_lock:
+        entry = _mcp_oauth_flows.get(server_name)
+        if entry is None:
+            return
+        entry["url"] = authorization_url
+        if entry.get("status") in (None, "starting"):
+            entry["status"] = "url_ready"
+
+
+def _ensure_mcp_oauth_broadcaster_registered() -> None:
+    """Register the URL-capture broadcaster once per dashboard process."""
+    global _mcp_oauth_broadcaster_registered
+    if _mcp_oauth_broadcaster_registered:
+        return
+    try:
+        from tools.mcp_oauth import register_auth_url_broadcaster
+    except ImportError:
+        _log.warning("MCP OAuth broadcaster API unavailable — old mcp_oauth module?")
+        return
+    register_auth_url_broadcaster(_record_mcp_auth_url)
+    _mcp_oauth_broadcaster_registered = True
+
+
+def _run_mcp_probe(server_name: str, server_config: dict) -> None:
+    """Worker-thread entry: run the connect/list-tools probe and update state.
+
+    Blocks for the full OAuth flow (up to ~5 minutes while waiting for the
+    user's browser to deliver the callback). Daemon thread, so a process
+    exit during a flow doesn't hang shutdown.
+    """
+    from hermes_cli.mcp_config import _probe_single_server, _unwrap_exception_group
+
+    try:
+        tools = _probe_single_server(server_name, server_config, connect_timeout=30)
+        with _mcp_oauth_flows_lock:
+            entry = _mcp_oauth_flows.get(server_name)
+            if entry is not None:
+                entry["status"] = "completed"
+                entry["tool_count"] = len(tools)
+                entry["completed_at"] = time.time()
+    except BaseException as exc:
+        wrapped = exc if isinstance(exc, Exception) else _unwrap_exception_group(exc)
+        msg = str(wrapped) or repr(wrapped)
+        _log.warning("MCP probe failed for '%s': %s", server_name, msg)
+        with _mcp_oauth_flows_lock:
+            entry = _mcp_oauth_flows.get(server_name)
+            if entry is not None:
+                entry["status"] = "failed"
+                entry["error"] = msg
+                entry["completed_at"] = time.time()
+
+
+@app.get("/api/mcp/servers")
+async def list_mcp_servers():
+    """List all MCP servers from config plus their token-cache status."""
+    from hermes_cli.mcp_config import _get_mcp_servers
+    try:
+        from tools.mcp_oauth import HermesTokenStorage
+    except ImportError:
+        HermesTokenStorage = None  # type: ignore[assignment]
+
+    out = []
+    for name, cfg in _get_mcp_servers().items():
+        item: Dict[str, Any] = {
+            "name": name,
+            "url": cfg.get("url"),
+            "command": cfg.get("command"),
+            "auth": cfg.get("auth"),
+        }
+        if cfg.get("auth") == "oauth" and HermesTokenStorage is not None:
+            try:
+                item["has_tokens"] = HermesTokenStorage(name).has_cached_tokens()
+            except Exception:
+                item["has_tokens"] = False
+        else:
+            item["has_tokens"] = None
+        out.append(item)
+    return {"servers": out}
+
+
+@app.post("/api/mcp/oauth/start/{server_name}")
+async def start_mcp_oauth(server_name: str):
+    """Kick off an OAuth flow for the named MCP server."""
+    from hermes_cli.mcp_config import _get_mcp_servers
+
+    servers = _get_mcp_servers()
+    if server_name not in servers:
+        raise HTTPException(
+            status_code=404,
+            detail=f"MCP server '{server_name}' not found in config",
+        )
+    cfg = servers[server_name]
+    if cfg.get("auth") != "oauth":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Server '{server_name}' is not OAuth-configured (auth={cfg.get('auth')})",
+        )
+
+    _ensure_mcp_oauth_broadcaster_registered()
+
+    with _mcp_oauth_flows_lock:
+        existing = _mcp_oauth_flows.get(server_name)
+        if existing and existing.get("status") in ("starting", "url_ready"):
+            return {
+                "status": existing["status"],
+                "url": existing.get("url"),
+                "started_at": existing.get("started_at"),
+                "already_running": True,
+            }
+        _mcp_oauth_flows[server_name] = {
+            "status": "starting",
+            "url": None,
+            "error": None,
+            "started_at": time.time(),
+        }
+        snapshot = dict(_mcp_oauth_flows[server_name])
+
+    threading.Thread(
+        target=_run_mcp_probe,
+        args=(server_name, cfg),
+        name=f"mcp-oauth-{server_name}",
+        daemon=True,
+    ).start()
+
+    return JSONResponse(status_code=202, content={**snapshot, "already_running": False})
+
+
+@app.get("/api/mcp/oauth/status/{server_name}")
+async def get_mcp_oauth_status(server_name: str):
+    """Poll the current OAuth flow status for a server."""
+    with _mcp_oauth_flows_lock:
+        entry = _mcp_oauth_flows.get(server_name)
+        if entry is None:
+            return {"status": "idle"}
+        return {
+            "status": entry["status"],
+            "url": entry.get("url"),
+            "error": entry.get("error"),
+            "started_at": entry.get("started_at"),
+            "completed_at": entry.get("completed_at"),
+            "tool_count": entry.get("tool_count"),
+        }
+
+
+@app.delete("/api/mcp/oauth/start/{server_name}")
+async def clear_mcp_oauth(server_name: str):
+    """Reset the dashboard-side flow state. Does not abort an in-flight probe."""
+    with _mcp_oauth_flows_lock:
+        _mcp_oauth_flows.pop(server_name, None)
+    return {"status": "idle"}
+
+
+# ---------------------------------------------------------------------------
 # Log viewer endpoint
 # ---------------------------------------------------------------------------
 

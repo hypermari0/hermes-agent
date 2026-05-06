@@ -74,6 +74,7 @@ export interface Translations {
       documentation: string;
       keys: string;
       logs: string;
+      mcp: string;
       models: string;
       profiles: string;
       plugins: string;

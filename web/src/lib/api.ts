@@ -243,6 +243,24 @@ export const api = {
     );
   },
 
+  // MCP servers (OAuth flow driven from the dashboard)
+  getMcpServers: () =>
+    fetchJSON<{ servers: McpServerInfo[] }>("/api/mcp/servers"),
+  startMcpOAuth: (name: string) =>
+    fetchJSON<McpOAuthFlowState>(
+      `/api/mcp/oauth/start/${encodeURIComponent(name)}`,
+      { method: "POST" },
+    ),
+  getMcpOAuthStatus: (name: string) =>
+    fetchJSON<McpOAuthFlowState>(
+      `/api/mcp/oauth/status/${encodeURIComponent(name)}`,
+    ),
+  clearMcpOAuth: (name: string) =>
+    fetchJSON<McpOAuthFlowState>(
+      `/api/mcp/oauth/start/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+
   // Gateway / update actions
   restartGateway: () =>
     fetchJSON<ActionResponse>("/api/gateway/restart", { method: "POST" }),
@@ -781,4 +799,29 @@ export interface AgentPluginUpdateResponse {
 export interface PluginProvidersPutRequest {
   memory_provider?: string;
   context_engine?: string;
+}
+
+export interface McpServerInfo {
+  name: string;
+  url: string | null;
+  command: string | null;
+  auth: string | null;
+  has_tokens: boolean | null;
+}
+
+export type McpOAuthStatus =
+  | "idle"
+  | "starting"
+  | "url_ready"
+  | "completed"
+  | "failed";
+
+export interface McpOAuthFlowState {
+  status: McpOAuthStatus;
+  url?: string | null;
+  error?: string | null;
+  started_at?: number | null;
+  completed_at?: number | null;
+  tool_count?: number | null;
+  already_running?: boolean;
 }
