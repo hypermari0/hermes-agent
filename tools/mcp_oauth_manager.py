@@ -373,11 +373,13 @@ class MCPOAuthManager:
         storage = HermesTokenStorage(server_name)
 
         if not _is_interactive() and not storage.has_cached_tokens():
-            logger.warning(
-                "MCP OAuth for '%s': non-interactive environment and no "
-                "cached tokens found. Run interactively first to complete "
-                "initial authorization.",
-                server_name,
+            from tools.mcp_oauth import OAuthNonInteractiveError
+            raise OAuthNonInteractiveError(
+                f"MCP OAuth for '{server_name}': non-interactive environment "
+                "and no cached tokens. Run `hermes mcp test "
+                f"{server_name}` interactively to complete the initial "
+                "authorization, then restart this process to pick up the "
+                "cached tokens."
             )
 
         _configure_callback_port(cfg)
