@@ -638,12 +638,11 @@ def build_oauth_auth(
     storage = HermesTokenStorage(server_name)
 
     if not _is_interactive() and not storage.has_cached_tokens():
-        logger.warning(
-            "MCP OAuth for '%s': non-interactive environment and no cached tokens "
-            "found. The OAuth flow requires browser authorization. Run "
-            "interactively first to complete the initial authorization, then "
-            "cached tokens will be reused.",
-            server_name,
+        raise OAuthNonInteractiveError(
+            f"MCP OAuth for '{server_name}': non-interactive environment "
+            f"and no cached tokens. Run `hermes mcp test {server_name}` "
+            "interactively to complete the initial authorization, then "
+            "restart this process to pick up the cached tokens."
         )
 
     _configure_callback_port(cfg)

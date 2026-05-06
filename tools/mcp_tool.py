@@ -1353,6 +1353,23 @@ class MCPServerTask:
                 # should not permanently kill the server.
                 # (Ported from Kilo Code's MCP resilience fix.)
                 if not self._ready.is_set():
+                    # OAuth that needs a browser can't recover on retry in a
+                    # headless container — skip the retry loop and surface a
+                    # single clean message so other servers continue.
+                    try:
+                        from tools.mcp_oauth import OAuthNonInteractiveError
+                        non_interactive_oauth = isinstance(exc, OAuthNonInteractiveError)
+                    except ImportError:
+                        non_interactive_oauth = False
+                    if non_interactive_oauth:
+                        logger.warning(
+                            "MCP server '%s' skipped at startup: %s",
+                            self.name, exc,
+                        )
+                        self._error = exc
+                        self._ready.set()
+                        return
+
                     initial_retries += 1
                     if initial_retries > _MAX_INITIAL_CONNECT_RETRIES:
                         logger.warning(
