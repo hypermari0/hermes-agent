@@ -125,7 +125,12 @@ all = [
   "hermes-agent[dingtalk]",
   "hermes-agent[feishu]",
   "hermes-agent[google]",
-  "hermes-agent[mistral]",
+  # mistralai is currently quarantined on PyPI (PyPI admin action), so the
+  # [mistral] extra is temporarily dropped from [all] to keep `pip install
+  # .[all]` resolvable. Users who need Mistral Voxtral STT/TTS can still
+  # `pip install .[mistral]` directly once PyPI releases the package — the
+  # runtime imports `mistralai` lazily and handles the missing-module case.
+  # "hermes-agent[mistral]",
   "hermes-agent[bedrock]",
   "hermes-agent[web]",
   "hermes-agent[composio]",
