@@ -273,7 +273,47 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "stt.provider": {
         "type": "select",
         "description": "Speech-to-text provider",
-        "options": ["local", "openai", "mistral"],
+        "options": ["local", "groq", "openai", "mistral", "xai"],
+    },
+    "stt.local.model": {
+        "type": "select",
+        "description": "faster-whisper local model size (larger = more accurate, slower)",
+        "options": ["tiny", "base", "small", "medium", "large-v3", "turbo"],
+    },
+    "stt.local.language": {
+        "type": "select",
+        "description": "Force a language for local STT (empty = auto-detect). 'pt' for Portuguese.",
+        "options": ["", "en", "pt", "es", "fr", "de", "it", "ja", "zh", "ru", "uk", "tr", "ar", "hi"],
+    },
+    "stt.groq.model": {
+        "type": "select",
+        "description": "Groq Whisper model (turbo is faster, v3 is more accurate)",
+        "options": ["whisper-large-v3-turbo", "whisper-large-v3", "distil-whisper-large-v3-en"],
+    },
+    "stt.groq.language": {
+        "type": "select",
+        "description": "Force a language for Groq STT (empty = auto-detect). 'pt' for Portuguese.",
+        "options": ["", "en", "pt", "es", "fr", "de", "it", "ja", "zh", "ru", "uk", "tr", "ar", "hi"],
+    },
+    "stt.openai.model": {
+        "type": "select",
+        "description": "OpenAI Whisper model",
+        "options": ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+    },
+    "stt.openai.language": {
+        "type": "select",
+        "description": "Force a language for OpenAI STT (empty = auto-detect). 'pt' for Portuguese.",
+        "options": ["", "en", "pt", "es", "fr", "de", "it", "ja", "zh", "ru", "uk", "tr", "ar", "hi"],
+    },
+    "stt.mistral.model": {
+        "type": "select",
+        "description": "Mistral Voxtral model",
+        "options": ["voxtral-mini-latest", "voxtral-mini-2602"],
+    },
+    "stt.xai.language": {
+        "type": "select",
+        "description": "Force a language for xAI Grok STT (empty = auto-detect). 'pt' for Portuguese.",
+        "options": ["", "en", "pt", "es", "fr", "de", "it", "ja", "zh", "ru", "uk", "tr", "ar", "hi"],
     },
     "display.skin": {
         "type": "select",

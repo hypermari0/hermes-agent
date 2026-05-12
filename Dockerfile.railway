@@ -19,13 +19,26 @@ COPY --chmod=0755 --from=caddy_source /usr/bin/caddy /usr/local/bin/caddy
 
 WORKDIR /opt/hermes
 
+# --- npm: top-level deps (root + Playwright host) -----------------------------
+# Split so an unrelated change (web deps, source code) does NOT re-trigger the
+# 5-minute Playwright chromium download. Only re-runs when the root
+# package-lock.json changes.
 COPY package.json package-lock.json ./
-COPY web/package.json web/package-lock.json web/
+RUN npm install --prefer-offline --no-audit && npm cache clean --force
 
-RUN npm install --prefer-offline --no-audit && \
-    npx playwright install --with-deps chromium --only-shell && \
-    (cd web && npm install --prefer-offline --no-audit) && \
-    npm cache clean --force
+# --- playwright chromium ------------------------------------------------------
+# Dedicated layer, ~5m40s when fresh, fully cached otherwise. Stays cached as
+# long as the root package-lock.json (which pins playwright) doesn't change.
+# `--with-deps` keeps apt-pkg resolution correct on Debian 13 (where several
+# libs were renamed with t64 suffixes); only the apt-install round-trip is
+# spent on cache misses, and `--only-shell` keeps the chromium download minimal.
+RUN npx playwright install --with-deps chromium --only-shell
+
+# --- web (dashboard) deps -----------------------------------------------------
+# Separate from root deps so web/package-lock.json churn doesn't invalidate
+# the Playwright layer above.
+COPY web/package.json web/package-lock.json web/
+RUN cd web && npm install --prefer-offline --no-audit && npm cache clean --force
 
 COPY --chown=hermes:hermes . .
 
