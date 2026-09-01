@@ -57,7 +57,7 @@ fi
 # HackClaw / TAIKAI MCP: idempotently inject the taikai entry into
 # config.yaml when the public domain is known. Lets a fresh deploy go from
 # zero to functional OAuth without manually editing the volume — see
-# tools/mcp_oauth.py (public_callback_url support) and docker/Caddyfile
+# tools/mcp_oauth.py (oauth.redirect_uri support) and docker/Caddyfile
 # (`/oauth/*` route to MCP_OAUTH_CALLBACK_PORT). Only adds; never overwrites
 # an existing taikai entry.
 RAILWAY_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-}"
@@ -81,13 +81,13 @@ if "taikai" not in mcp:
         "auth": "oauth",
         "oauth": {
             "redirect_port": 9123,
-            "public_callback_url": f"https://{domain}/oauth/callback",
+            "redirect_uri": f"https://{domain}/oauth/callback",
         },
     }
     with open(cfg_path, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
     print(f"[launcher] injected taikai mcp_server entry "
-          f"(public_callback_url=https://{domain}/oauth/callback)")
+          f"(redirect_uri=https://{domain}/oauth/callback)")
 PY
 fi
 
